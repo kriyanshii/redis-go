@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+
 	// Uncomment this block to pass the first stage
 	"net"
 	"os"
@@ -26,18 +29,51 @@ func main() {
 			fmt.Println("Error accepting connection: ", err.Error())
 			continue
 		}
+		// to listen to multiple ping's from same user.
 		go handleConnection(connection)
 	}
 }
 
 func handleConnection(connection net.Conn) {
 	defer connection.Close()
+	// smalles tcp packet
 	buff := make([]byte, 1024)
 	for {
 		n, err := connection.Read(buff)
 		if err != nil || n == 0 {
 			return
 		}
-		connection.Write([]byte("+PONG\r\n"))
+		commands := parse(buff)
+		if commands[0] == "echo" {
+			connection.Write([]byte(fmt.Sprintf("+%v\r\n", commands[1])))
+		} else if commands[0] == "ping" {
+			connection.Write([]byte("+PONG\r\n"))
+		}
 	}
+}
+
+func parse(input []byte) []string {
+	rawInput := string(input)
+	commands := strings.Split(rawInput, "\r\n")
+	var parsedCommands []string
+	if strings.HasPrefix(commands[0], "*") {
+		_, err := strconv.Atoi(commands[0][1:])
+		if err != nil {
+			return []string{"Encounterd error"}
+		}
+		checkLengthFlag := false
+		for _, v := range commands[1:] {
+			if strings.HasPrefix(v, "$") {
+				_, err := strconv.Atoi(v[1:])
+				if err != nil {
+					return []string{"Encounterd error while parsing $"}
+				}
+				checkLengthFlag = true
+			} else if checkLengthFlag {
+				checkLengthFlag = false
+				parsedCommands = append(parsedCommands, strings.ToLower(v))
+			}
+		}
+	}
+	return parsedCommands
 }
