@@ -10,9 +10,38 @@ import (
 	"os"
 )
 
+const (
+	pingCommand      = "PING"
+	echoCommand      = "ECHO"
+	setCommand       = "SET"
+	getCommand       = "GET"
+	pingResponse     = "+PONG\r\n"
+	okResponse       = "+OK\r\n"
+	notFoundResponse = "$-1\r\n"
+)
+
+type Store struct {
+	Data map[string]string
+}
+
+func NewStore() *Store {
+	return &Store{
+		Data: make(map[string]string),
+	}
+}
+func (s *Store) Set(key, value string) {
+	s.Data[key] = value
+}
+
+func (s *Store) Get(key string) (string, bool) {
+	val, ok := s.Data[key]
+	return val, ok
+}
+
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
+	store := NewStore()
 
 	// Uncomment this block to pass the first stage
 
@@ -30,11 +59,11 @@ func main() {
 			continue
 		}
 		// to listen to multiple ping's from same user.
-		go handleConnection(connection)
+		go handleConnection(connection, store)
 	}
 }
 
-func handleConnection(connection net.Conn) {
+func handleConnection(connection net.Conn, store *Store) {
 	defer connection.Close()
 	// smalles tcp packet
 	buff := make([]byte, 1024)
@@ -44,12 +73,25 @@ func handleConnection(connection net.Conn) {
 			return
 		}
 		commands := parse(buff)
-		if commands[0] == "echo" {
+		if commands[0] == echoCommand {
 			connection.Write([]byte(fmt.Sprintf("+%v\r\n", commands[1])))
-		} else if commands[0] == "ping" {
-			connection.Write([]byte("+PONG\r\n"))
+		} else if commands[0] == pingCommand {
+			connection.Write([]byte(pingResponse))
+		} else if commands[0] == "set" {
+			store.Set(commands[1], commands[2])
+			connection.Write([]byte(okResponse))
+		} else if commands[0] == "get" {
+			val, ok := store.Get(commands[1])
+			if !ok {
+				connection.Write([]byte(notFoundResponse))
+			}
+			connection.Write([]byte(createResponseMsg(val)))
 		}
 	}
+}
+
+func createResponseMsg(msg string) string {
+	return fmt.Sprintf("$%d\r\n%s\r\n", len(msg), msg)
 }
 
 func parse(input []byte) []string {
