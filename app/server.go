@@ -76,6 +76,7 @@ func handleConnection(connection net.Conn, store *Store) {
 		if commands[0] == echoCommand {
 			connection.Write([]byte(createResponseMsg(commands[1])))
 		} else if commands[0] == pingCommand {
+			fmt.Printf("ping %v, %v", pingCommand, pingResponse)
 			connection.Write([]byte(pingResponse))
 		} else if commands[0] == "set" {
 			store.Set(commands[1], commands[2])
