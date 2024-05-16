@@ -57,8 +57,11 @@ func (s *Store) Get(key string) (string, bool) {
 }
 
 func main() {
+	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
 	store := NewStore()
+
+	// Uncomment this block to pass the first stage
 
 	listener, err := net.Listen("tcp", "0.0.0.0:6379")
 	if err != nil {
@@ -73,12 +76,14 @@ func main() {
 			fmt.Println("Error accepting connection: ", err.Error())
 			continue
 		}
+		// to listen to multiple ping's from same user.
 		go handleConnection(connection, store)
 	}
 }
 
 func handleConnection(connection net.Conn, store *Store) {
 	defer connection.Close()
+	// smalles tcp packet
 	buff := make([]byte, 1024)
 	for {
 		n, err := connection.Read(buff)
