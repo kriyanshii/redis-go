@@ -83,7 +83,7 @@ func main() {
 
 func handleConnection(connection net.Conn, store *Store) {
 	defer connection.Close()
-	// smalles tcp packet
+	// smallest tcp packet
 	buff := make([]byte, 1024)
 	for {
 		n, err := connection.Read(buff)
