@@ -126,6 +126,8 @@ func handleConnection(connection net.Conn, store *Store) {
 			}
 		case "info":
 			infoResponse := "role:master"
+			infoResponse += fmt.Sprintf("master_replid:8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb\r\n")
+			infoResponse += fmt.Sprintf("master_repl_offset:0\r\n")
 			if *replicaOf != "" {
 				infoResponse = "role:slave"
 			}
