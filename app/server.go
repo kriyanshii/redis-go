@@ -19,6 +19,7 @@ const (
 	pingResponse     = "+PONG\r\n"
 	okResponse       = "+OK\r\n"
 	notFoundResponse = "$-1\r\n"
+	infoResponse     = "$11\r\nrole:master\r\n"
 )
 
 type Store struct {
@@ -122,6 +123,9 @@ func handleConnection(connection net.Conn, store *Store) {
 			} else {
 				connection.Write([]byte(createResponseMsg(val)))
 			}
+		case "info":
+			connection.Write([]byte(infoResponse))
+
 		}
 	}
 }
