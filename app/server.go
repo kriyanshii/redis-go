@@ -69,6 +69,10 @@ func main() {
 	port := flag.Int("port", 6379, "The port which the redis server listens")
 	flag.Parse()
 
+	if *replicaOf != "" {
+		go replicateToMaster(*replicaOf)
+	}
+
 	listener, err := net.Listen("tcp", "0.0.0.0:"+strconv.Itoa(*port))
 	if err != nil {
 		fmt.Printf("Failed to bind to port %v", port)
@@ -85,6 +89,41 @@ func main() {
 		// to listen to multiple ping's from same user.
 		go handleConnection(connection, store)
 	}
+}
+
+func replicateToMaster(masterAddress string) {
+	parts := strings.Split(masterAddress, " ")
+	if len(parts) != 2 {
+		fmt.Println("Invalid master address format. Expected <MASTER_HOST>  <MASTER_PORT>")
+		return
+	}
+
+	masterHost := parts[0]
+	masterPort := parts[1]
+	masterConn, err := net.Dial("tcp", masterHost+":"+masterPort)
+	if err != nil {
+		fmt.Printf("Failed to connect to master at %s:%s\n", masterHost, masterPort)
+		os.Exit(1)
+	}
+	defer masterConn.Close()
+
+	// send ping message
+
+	pingMessage := "*1\r\n$4\r\nPING\r\n"
+	_, err = masterConn.Write([]byte(pingMessage))
+	if err != nil {
+		fmt.Println("Failed to send PING to master:", err)
+		os.Exit(1)
+	}
+
+	// Optionally read response from master
+	buff := make([]byte, 1024)
+	_, err = masterConn.Read(buff)
+	if err != nil {
+		fmt.Println("Failed to read PING response from master:", err)
+		os.Exit(1)
+	}
+	fmt.Println("Received response from master:", string(buff))
 }
 
 func handleConnection(connection net.Conn, store *Store) {
