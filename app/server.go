@@ -116,6 +116,11 @@ func replicateToMaster(masterAddress string) {
 		os.Exit(1)
 	}
 
+	time.Sleep(1 * time.Second)
+	masterConn.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n6380\r\n"))
+	time.Sleep(1 * time.Second)
+	masterConn.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n"))
+
 	// Optionally read response from master
 	buff := make([]byte, 1024)
 	_, err = masterConn.Read(buff)
@@ -124,11 +129,6 @@ func replicateToMaster(masterAddress string) {
 		os.Exit(1)
 	}
 	fmt.Println("Received response from master:", string(buff))
-
-	time.Sleep(1 * time.Second)
-	masterConn.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n6380\r\n"))
-	time.Sleep(1 * time.Second)
-	masterConn.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n"))
 }
 
 func handleConnection(connection net.Conn, store *Store) {
