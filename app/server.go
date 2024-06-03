@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"net"
@@ -20,6 +21,8 @@ const (
 	okResponse       = "+OK\r\n"
 	notFoundResponse = "$-1\r\n"
 )
+
+var emptyRDB, _ = hex.DecodeString("524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2")
 
 var replicaOf = flag.String("replicaof", "", "Replicate to another server")
 
@@ -182,6 +185,7 @@ func handleConnection(connection net.Conn, store *Store) {
 			connection.Write([]byte(okResponse))
 		case "psync":
 			connection.Write([]byte("+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"))
+			connection.Write(append([]byte(fmt.Sprintf("$%d\r\n", len(emptyRDB))), emptyRDB...))
 		}
 	}
 }
