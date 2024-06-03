@@ -178,7 +178,8 @@ func handleConnection(connection net.Conn, store *Store) {
 				infoResponse = "role:slave"
 			}
 			connection.Write([]byte(createResponseMsg(infoResponse)))
-
+		case "replconf":
+			connection.Write([]byte(okResponse))
 		}
 	}
 }
