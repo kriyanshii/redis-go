@@ -180,6 +180,8 @@ func handleConnection(connection net.Conn, store *Store) {
 			connection.Write([]byte(createResponseMsg(infoResponse)))
 		case "replconf":
 			connection.Write([]byte(okResponse))
+		case "psync":
+			connection.Write([]byte("+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"))
 		}
 	}
 }
