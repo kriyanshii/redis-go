@@ -13,6 +13,7 @@ import (
 
 const (
 	pingCommand      = "PING"
+	pingMessage      = "*1\r\n$4\r\nPING\r\n"
 	echoCommand      = "ECHO"
 	setCommand       = "SET"
 	getCommand       = "GET"
@@ -68,6 +69,10 @@ func main() {
 
 	port := flag.Int("port", 6379, "The port which the redis server listens")
 	flag.Parse()
+
+	if *replicaOf != "" {
+		go replicateMaster(*replicaOf)
+	}
 
 	listener, err := net.Listen("tcp", "0.0.0.0:"+strconv.Itoa(*port))
 	if err != nil {
@@ -135,6 +140,40 @@ func handleConnection(connection net.Conn, store *Store) {
 
 		}
 	}
+}
+
+func replicateMaster(address string) {
+	parts := strings.Split(address, " ")
+	if len(parts) != 2 {
+		fmt.Println("Invalid master address format. Expected <MASTER_HOST> <MASTER_PORT>")
+	}
+	masterHost := parts[0]
+	masterPort := parts[1]
+	masterConn, err := net.Dial("tcp", masterHost+":"+masterPort)
+	if err != nil {
+		fmt.Print("failed to connect to master at %s:%s\n", masterHost, masterPort)
+	}
+	defer masterConn.Close()
+	// send ping
+	_, err = masterConn.Write([]byte(pingMessage))
+	if err != nil {
+		fmt.Println("Failed to send PING to master: ", err)
+		os.Exit(1)
+	}
+
+	time.Sleep(1 * time.Second)
+	masterConn.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n6380\r\n"))
+	time.Sleep(1 * time.Second)
+	masterConn.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n"))
+	time.Sleep(1 * time.Second)
+	masterConn.Write([]byte("*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n"))
+
+	buff := make([]byte, 1024)
+	_, err = masterConn.Read(buff)
+	if err != nil {
+		fmt.Println("Failed to read PING response from master: ", err)
+	}
+	fmt.Println("Recieved ping response from master: ", string(buff))
 }
 
 func createResponseMsg(msg string) string {
