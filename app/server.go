@@ -162,7 +162,7 @@ func replicateMaster(address string) {
 	masterPort := parts[1]
 	masterConn, err := net.Dial("tcp", masterHost+":"+masterPort)
 	if err != nil {
-		fmt.Print("failed to connect to master at %s:%s\n", masterHost, masterPort)
+		fmt.Printf("failed to connect to master at %s:%s\n", masterHost, masterPort)
 	}
 	defer masterConn.Close()
 	// send ping
@@ -185,6 +185,29 @@ func replicateMaster(address string) {
 		fmt.Println("Failed to read PING response from master: ", err)
 	}
 	fmt.Println("Recieved ping response from master: ", string(buff))
+
+	buffer := make([]byte, 4096)
+	for {
+		n, err := masterConn.Read(buffer)
+		if err != nil {
+			fmt.Println("Error reading from master: ", err)
+			return
+		}
+		commands := parse(buffer[:n])
+        for _, cmdParts := range commands {
+            if len(cmdParts) > 0 && strings.ToUpper(cmdParts[0]) == "SET" {
+                if len(cmdParts) >= 3 {
+                    ttl := time.Duration(0) 
+                    if len(cmdParts) == 5 && strings.ToLower(cmdParts[3]) == "px" {
+                        if parsedTTL, err := strconv.Atoi(cmdParts[4]); err == nil {
+                            ttl = time.Duration(parsedTTL) * time.Millisecond
+                        }
+                    }
+                    store.Set(cmdParts[1], cmdParts[2], ttl) // Update data store
+                }
+            }
+
+	}
 }
 
 func createResponseMsg(msg string) string {
