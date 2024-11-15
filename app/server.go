@@ -162,7 +162,7 @@ func replicateMaster(address string) {
 	masterPort := parts[1]
 	masterConn, err := net.Dial("tcp", masterHost+":"+masterPort)
 	if err != nil {
-		fmt.Print("failed to connect to master at %s:%s\n", masterHost, masterPort)
+		fmt.Printf("failed to connect to master at %s:%s\n", masterHost, masterPort)
 	}
 	defer masterConn.Close()
 	// send ping
