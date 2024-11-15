@@ -162,7 +162,7 @@ func replicateMaster(address string) {
 	masterPort := parts[1]
 	masterConn, err := net.Dial("tcp", masterHost+":"+masterPort)
 	if err != nil {
-		fmt.Print("failed to connect to master at %s:%s\n", masterHost, masterPort)
+		fmt.Printf("failed to connect to master at %s:%s\n", masterHost, masterPort)
 	}
 	defer masterConn.Close()
 	// send ping
@@ -185,6 +185,27 @@ func replicateMaster(address string) {
 		fmt.Println("Failed to read PING response from master: ", err)
 	}
 	fmt.Println("Recieved ping response from master: ", string(buff))
+
+	buffer := make([]byte, 4096)
+	for {
+		n, err := masterConn.Read(buffer)
+		if err != nil {
+			fmt.Println("Error reading from master: ", err)
+			return
+		}
+		commands := parse(buffer[:n])
+		for _, cmd := range commands {
+			if len(cmd) == 0 {
+				continue
+			}
+
+			switch commands[0] {
+			case "set":
+				masterConn.Write([]byte(createResponseMsg(commands[1])))
+			}
+		}
+
+	}
 }
 
 func createResponseMsg(msg string) string {
