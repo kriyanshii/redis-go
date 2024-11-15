@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"net"
@@ -13,6 +14,7 @@ import (
 
 const (
 	pingCommand      = "PING"
+	pingMessage      = "*1\r\n$4\r\nPING\r\n"
 	echoCommand      = "ECHO"
 	setCommand       = "SET"
 	getCommand       = "GET"
@@ -22,6 +24,8 @@ const (
 )
 
 var replicaOf = flag.String("replicaof", "", "Replicate to another server")
+var emptyRDB, _ = hex.DecodeString("524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2")
+var slaves = []net.Conn{}
 
 type Store struct {
 	Data     map[string]string
@@ -69,6 +73,10 @@ func main() {
 	port := flag.Int("port", 6379, "The port which the redis server listens")
 	flag.Parse()
 
+	if *replicaOf != "" {
+		go replicateMaster(*replicaOf)
+	}
+
 	listener, err := net.Listen("tcp", "0.0.0.0:"+strconv.Itoa(*port))
 	if err != nil {
 		fmt.Printf("Failed to bind to port %v", port)
@@ -114,6 +122,9 @@ func handleConnection(connection net.Conn, store *Store) {
 						ttl = time.Duration(parsedTTL) * time.Millisecond
 					}
 				}
+				for _, slave := range slaves {
+					slave.Write([]byte(fmt.Sprintf("*3\r\n$3\r\nSET\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n", len(commands[1]), commands[1], len(commands[2]), commands[2])))
+				}
 				store.Set(commands[1], commands[2], ttl)
 				connection.Write([]byte(okResponse))
 			}
@@ -132,9 +143,48 @@ func handleConnection(connection net.Conn, store *Store) {
 				infoResponse = "role:slave"
 			}
 			connection.Write([]byte(createResponseMsg(infoResponse)))
-
+		case "replconf":
+			connection.Write([]byte(okResponse))
+		case "psync":
+			slaves = append(slaves, connection)
+			connection.Write([]byte("+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"))
+			connection.Write(append([]byte(fmt.Sprintf("$%d\r\n", len(emptyRDB))), emptyRDB...))
 		}
 	}
+}
+
+func replicateMaster(address string) {
+	parts := strings.Split(address, " ")
+	if len(parts) != 2 {
+		fmt.Println("Invalid master address format. Expected <MASTER_HOST> <MASTER_PORT>")
+	}
+	masterHost := parts[0]
+	masterPort := parts[1]
+	masterConn, err := net.Dial("tcp", masterHost+":"+masterPort)
+	if err != nil {
+		fmt.Print("failed to connect to master at %s:%s\n", masterHost, masterPort)
+	}
+	defer masterConn.Close()
+	// send ping
+	_, err = masterConn.Write([]byte(pingMessage))
+	if err != nil {
+		fmt.Println("Failed to send PING to master: ", err)
+		os.Exit(1)
+	}
+
+	time.Sleep(1 * time.Second)
+	masterConn.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n6380\r\n"))
+	time.Sleep(1 * time.Second)
+	masterConn.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n"))
+	time.Sleep(1 * time.Second)
+	masterConn.Write([]byte("*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n"))
+
+	buff := make([]byte, 1024)
+	_, err = masterConn.Read(buff)
+	if err != nil {
+		fmt.Println("Failed to read PING response from master: ", err)
+	}
+	fmt.Println("Recieved ping response from master: ", string(buff))
 }
 
 func createResponseMsg(msg string) string {
