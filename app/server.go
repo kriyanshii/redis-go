@@ -207,7 +207,6 @@ func replicateMaster(address string, store *Store) {
 		if len(commands) == 0 {
 			continue
 		}
-
 		switch commands[0] {
 		case "set":
 			if len(commands) >= 3 {
@@ -218,9 +217,9 @@ func replicateMaster(address string, store *Store) {
 					}
 				}
 				store.Set(commands[1], commands[2], ttl)
-				log.Print("setting store value:", commands[0])
-				log.Print("setting store value:", commands)
 			}
+		case "replconf":
+			masterConn.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n0\r\n."))
 		}
 	}
 }
