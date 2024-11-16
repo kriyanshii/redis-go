@@ -227,7 +227,7 @@ func replicateMaster(address string, store *Store) {
 			}
 		case "replconf":
 			if len(commands) == 3 && commands[1] == "getack" && commands[2] == "*" {
-				masterConn.Write([]byte(fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$%d\r\n", replica.offset)))
+				masterConn.Write([]byte(fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$%d\r\n0\r\n", replica.offset)))
 			}
 			replica.offset += n
 		default:
