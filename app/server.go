@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"strconv"
@@ -74,7 +75,8 @@ func main() {
 	flag.Parse()
 
 	if *replicaOf != "" {
-		go replicateMaster(*replicaOf)
+		log.Print("approached")
+		go replicateMaster(*replicaOf, store)
 	}
 
 	listener, err := net.Listen("tcp", "0.0.0.0:"+strconv.Itoa(*port))
@@ -91,11 +93,11 @@ func main() {
 			continue
 		}
 		// to listen to multiple ping's from same user.
-		go handleConnection(connection, store)
+		go handleConnection(connection, store, false)
 	}
 }
 
-func handleConnection(connection net.Conn, store *Store) {
+func handleConnection(connection net.Conn, store *Store, isMaster bool) {
 	defer connection.Close()
 	// smallest tcp packet
 	buff := make([]byte, 1024)
@@ -111,9 +113,13 @@ func handleConnection(connection net.Conn, store *Store) {
 
 		switch commands[0] {
 		case "echo":
-			connection.Write([]byte(createResponseMsg(commands[1])))
+			if !isMaster {
+				connection.Write([]byte(createResponseMsg(commands[1])))
+			}
 		case "ping":
-			connection.Write([]byte(pingResponse))
+			if !isMaster {
+				connection.Write([]byte(pingResponse))
+			}
 		case "set":
 			if len(commands) >= 3 {
 				ttl := time.Duration(0)
@@ -126,14 +132,20 @@ func handleConnection(connection net.Conn, store *Store) {
 					slave.Write([]byte(fmt.Sprintf("*3\r\n$3\r\nSET\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n", len(commands[1]), commands[1], len(commands[2]), commands[2])))
 				}
 				store.Set(commands[1], commands[2], ttl)
-				connection.Write([]byte(okResponse))
+				if !isMaster {
+					connection.Write([]byte(okResponse))
+				}
 			}
 		case "get":
 			val, ok := store.Get(commands[1])
 			if !ok {
-				connection.Write([]byte(notFoundResponse))
+				if !isMaster {
+					connection.Write([]byte(notFoundResponse))
+				}
 			} else {
-				connection.Write([]byte(createResponseMsg(val)))
+				if !isMaster {
+					connection.Write([]byte(createResponseMsg(val)))
+				}
 			}
 		case "info":
 			infoResponse := "role:master"
@@ -142,18 +154,24 @@ func handleConnection(connection net.Conn, store *Store) {
 			if *replicaOf != "" {
 				infoResponse = "role:slave"
 			}
-			connection.Write([]byte(createResponseMsg(infoResponse)))
+			if !isMaster {
+				connection.Write([]byte(createResponseMsg(infoResponse)))
+			}
 		case "replconf":
-			connection.Write([]byte(okResponse))
+			if !isMaster {
+				connection.Write([]byte(okResponse))
+			}
 		case "psync":
 			slaves = append(slaves, connection)
-			connection.Write([]byte("+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"))
-			connection.Write(append([]byte(fmt.Sprintf("$%d\r\n", len(emptyRDB))), emptyRDB...))
+			if !isMaster {
+				connection.Write([]byte("+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"))
+				connection.Write(append([]byte(fmt.Sprintf("$%d\r\n", len(emptyRDB))), emptyRDB...))
+			}
 		}
 	}
 }
 
-func replicateMaster(address string) {
+func replicateMaster(address string, store *Store) {
 	parts := strings.Split(address, " ")
 	if len(parts) != 2 {
 		fmt.Println("Invalid master address format. Expected <MASTER_HOST> <MASTER_PORT>")
@@ -162,7 +180,7 @@ func replicateMaster(address string) {
 	masterPort := parts[1]
 	masterConn, err := net.Dial("tcp", masterHost+":"+masterPort)
 	if err != nil {
-		fmt.Print("failed to connect to master at %s:%s\n", masterHost, masterPort)
+		fmt.Printf("failed to connect to master at %s:%s\n", masterHost, masterPort)
 	}
 	defer masterConn.Close()
 	// send ping
@@ -180,11 +198,31 @@ func replicateMaster(address string) {
 	masterConn.Write([]byte("*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n"))
 
 	buff := make([]byte, 1024)
-	_, err = masterConn.Read(buff)
-	if err != nil {
-		fmt.Println("Failed to read PING response from master: ", err)
+	for {
+		n, err := masterConn.Read(buff)
+		if err != nil || n == 0 {
+			return
+		}
+		commands := parse(buff[:n])
+		if len(commands) == 0 {
+			continue
+		}
+
+		switch commands[0] {
+		case "set":
+			if len(commands) >= 3 {
+				ttl := time.Duration(0)
+				if len(commands) == 5 && commands[3] == "px" {
+					if parsedTTL, err := strconv.Atoi(commands[4]); err == nil {
+						ttl = time.Duration(parsedTTL) * time.Millisecond
+					}
+				}
+				store.Set(commands[1], commands[2], ttl)
+				log.Print("setting store value:", commands[0])
+				log.Print("setting store value:", commands)
+			}
+		}
 	}
-	fmt.Println("Recieved ping response from master: ", string(buff))
 }
 
 func createResponseMsg(msg string) string {
