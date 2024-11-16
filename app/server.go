@@ -34,6 +34,12 @@ type Store struct {
 	Mutex    sync.RWMutex
 }
 
+type Replica struct {
+	offset int
+}
+
+var replica = &Replica{}
+
 func NewStore() *Store {
 	return &Store{
 		Data:     make(map[string]string),
@@ -183,7 +189,7 @@ func replicateMaster(address string, store *Store) {
 		fmt.Printf("failed to connect to master at %s:%s\n", masterHost, masterPort)
 	}
 	defer masterConn.Close()
-	// send ping
+
 	_, err = masterConn.Write([]byte(pingMessage))
 	if err != nil {
 		fmt.Println("Failed to send PING to master: ", err)
@@ -217,9 +223,15 @@ func replicateMaster(address string, store *Store) {
 					}
 				}
 				store.Set(commands[1], commands[2], ttl)
+				replica.offset += n
 			}
 		case "replconf":
-			masterConn.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n0\r\n"))
+			if len(commands) == 3 && commands[1] == "getack" && commands[2] == "*" {
+				masterConn.Write([]byte(fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$%d\r\n", replica.offset)))
+			}
+			replica.offset += n
+		default:
+			replica.offset += n
 		}
 	}
 }
