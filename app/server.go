@@ -226,12 +226,12 @@ func replicateMaster(address string, store *Store) {
 				replica.offset += n
 			}
 		case "replconf":
-			if len(commands) == 3 && commands[1] == "getack" && commands[2] == "*" {
-				masterConn.Write([]byte(fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$%d\r\n", replica.offset)))
-			}
+			masterConn.Write([]byte(fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n%d\r\n", replica.offset)))
 			replica.offset += n
-		default:
-			replica.offset += n
+			log.Print("offset: ", replica.offset)
+			// default:
+			// 	replica.offset += n
+			// 	log.Print("offset: ", replica.offset)
 		}
 	}
 }
