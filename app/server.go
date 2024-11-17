@@ -173,6 +173,8 @@ func handleConnection(connection net.Conn, store *Store, isMaster bool) {
 				connection.Write([]byte("+FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0\r\n"))
 				connection.Write(append([]byte(fmt.Sprintf("$%d\r\n", len(emptyRDB))), emptyRDB...))
 			}
+		case "wait":
+			connection.Write([]byte(":0\r\n"))
 		}
 	}
 }
@@ -238,7 +240,6 @@ func replicateMaster(address string, store *Store) {
 		case "replconf":
 			len := len(strconv.Itoa(replica.offset))
 			masterConn.Write([]byte(fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$%d\r\n%d\r\n", len, replica.offset)))
-			log.Println("offset: replconf: ", n, buff, len)
 			replica.offset += n
 			// default:
 			// 	replica.offset += n
