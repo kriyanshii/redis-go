@@ -28,6 +28,8 @@ var replicaOf = flag.String("replicaof", "", "Replicate to another server")
 var emptyRDB, _ = hex.DecodeString("524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2")
 var slaves = []net.Conn{}
 
+var ackChan = make(chan bool)
+
 type Store struct {
 	Data     map[string]string
 	Expiries map[string]time.Time
@@ -174,7 +176,31 @@ func handleConnection(connection net.Conn, store *Store, isMaster bool) {
 				connection.Write(append([]byte(fmt.Sprintf("$%d\r\n", len(emptyRDB))), emptyRDB...))
 			}
 		case "wait":
-			connection.Write([]byte(fmt.Sprintf(":%d\r\n", len(slaves))))
+			getAckCmd := []byte("*3\r\n$8\r\nREPLCONF\r\n$6\r\nGETACK\r\n$1\r\n*\r\n")
+
+			desiredReplicas, _ := strconv.Atoi(commands[1])
+			duration, _ := strconv.Atoi(commands[2])
+			fmt.Println("Calling handleWait with count = ", desiredReplicas, " timeout = ", duration)
+			if len(store.Data) == 0 {
+				connection.Write([]byte(fmt.Sprintf(":%d\r\n", len(slaves))))
+			}
+			for _, slave := range slaves {
+				go func() {
+					slave.Write(getAckCmd)
+				}()
+			}
+			timer := time.After(time.Duration(duration) * time.Millisecond)
+			acks := 0
+		loop:
+			for acks < desiredReplicas {
+				select {
+				case <-ackChan:
+					acks++
+				case <-timer:
+					break loop
+				}
+			}
+			connection.Write([]byte(fmt.Sprintf(":%d\r\n", acks)))
 		}
 	}
 }
@@ -241,9 +267,6 @@ func replicateMaster(address string, store *Store) {
 			len := len(strconv.Itoa(replica.offset))
 			masterConn.Write([]byte(fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$%d\r\n%d\r\n", len, replica.offset)))
 			replica.offset += n
-			// default:
-			// 	replica.offset += n
-			// 	log.Println("offset: default: ", n, buff)
 		}
 	}
 }
