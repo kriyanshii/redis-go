@@ -214,6 +214,8 @@ func replicateMaster(address string, store *Store) {
 			continue
 		}
 		switch commands[0] {
+		case "ping":
+			replica.offset += n
 		case "set":
 			if len(commands) >= 3 {
 				ttl := time.Duration(0)
@@ -225,13 +227,22 @@ func replicateMaster(address string, store *Store) {
 				store.Set(commands[1], commands[2], ttl)
 				replica.offset += n
 			}
-		case "replconf":
-			if len(commands) == 3 && commands[1] == "getack" && commands[2] == "*" {
-				masterConn.Write([]byte(fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$%d\r\n", replica.offset)))
+		case "get":
+			replica.offset += n
+			val, ok := store.Get(commands[1])
+			if !ok {
+				masterConn.Write([]byte(notFoundResponse))
+			} else {
+				masterConn.Write([]byte(createResponseMsg(val)))
 			}
+		case "replconf":
+			len := len(strconv.Itoa(replica.offset))
+			masterConn.Write([]byte(fmt.Sprintf("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$%d\r\n%d\r\n", len, replica.offset)))
+			log.Println("offset: replconf: ", n, buff, len)
 			replica.offset += n
-		default:
-			replica.offset += n
+			// default:
+			// 	replica.offset += n
+			// 	log.Println("offset: default: ", n, buff)
 		}
 	}
 }
