@@ -174,7 +174,7 @@ func handleConnection(connection net.Conn, store *Store, isMaster bool) {
 				connection.Write(append([]byte(fmt.Sprintf("$%d\r\n", len(emptyRDB))), emptyRDB...))
 			}
 		case "wait":
-			connection.Write([]byte(":0\r\n"))
+			connection.Write([]byte(fmt.Sprintf(":%d\r\n", len(slaves))))
 		}
 	}
 }
